@@ -3,8 +3,8 @@
 import { cleanup, renderHook, waitFor } from "@testing-library/react";
 import type { AvailableModel } from "@bb/domain";
 import type {
-  OnboardingAgentOverview,
   SystemExecutionOptionsResponse,
+  SystemProviderStatesResponse,
 } from "@bb/server-contract";
 import type { ProviderInfo } from "@bb/domain";
 import type {
@@ -16,15 +16,15 @@ import { sdk } from "@/lib/sdk";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import {
   hostProviderCliStatusQueryKey,
-  onboardingAgentsQueryKey,
   systemExecutionOptionsQueryKey,
+  systemProviderStatesQueryKey,
   systemProvidersQueryKey,
   systemUsageLimitsQueryKey,
 } from "./query-keys";
 import {
   useHostProviderCliStatus,
-  useOnboardingAgents,
   useSystemExecutionOptions,
+  useSystemProviderStates,
   useSystemUsageLimits,
 } from "./system-queries";
 
@@ -34,7 +34,7 @@ vi.mock("@/lib/sdk", () => ({
     hosts: { providerCliStatus: vi.fn() },
     system: {
       executionOptions: vi.fn(),
-      onboardingAgents: vi.fn(),
+      providerStates: vi.fn(),
       usageLimits: vi.fn(),
     },
   },
@@ -50,16 +50,20 @@ const EXECUTION_OPTIONS_RESPONSE: SystemExecutionOptionsResponse = {
 
 const PROVIDER_CLI_STATUS_RESPONSE = {} as ProviderCliStatusResponse;
 
-function onboardingOverview(providerId: string): OnboardingAgentOverview {
+function providerStates(providerId: string): SystemProviderStatesResponse {
   return {
-    agents: [
+    providers: [
       {
         providerId,
         displayName: providerId,
-        status: "connected",
+        status: "ready",
+        statusMessage: null,
         planLabel: null,
         accountEmail: null,
+        installedVersion: null,
+        minimumSupportedVersion: null,
         canInstall: false,
+        canUpdate: false,
         loginCommand: null,
       },
     ],
@@ -68,8 +72,8 @@ function onboardingOverview(providerId: string): OnboardingAgentOverview {
 
 const PROVIDER_USAGE_RESPONSE: ProviderUsageResponse = {
   codex: { status: "unauthenticated" },
-  claudeCode: { status: "unauthenticated" },
-  cursor: { status: "unauthenticated" },
+  "claude-code": { status: "unauthenticated" },
+  "acp-cursor": { status: "unauthenticated" },
 };
 
 afterEach(() => {
@@ -536,33 +540,33 @@ describe("useHostProviderCliStatus", () => {
   });
 });
 
-describe("useOnboardingAgents", () => {
-  it("separates connected-provider results for different target machines", async () => {
-    vi.mocked(sdk.system.onboardingAgents).mockImplementation(async (args) =>
-      onboardingOverview(args?.hostId === "host-a" ? "codex" : "claude-code"),
+describe("useSystemProviderStates", () => {
+  it("separates provider-state results for different target machines", async () => {
+    vi.mocked(sdk.system.providerStates).mockImplementation(async (args) =>
+      providerStates(args?.hostId === "host-a" ? "codex" : "claude-code"),
     );
     const { queryClient, wrapper } = createQueryClientTestHarness();
 
     const { result } = renderHook(
       () => [
-        useOnboardingAgents({ hostId: "host-a", poll: false }),
-        useOnboardingAgents({ hostId: "host-b", poll: false }),
+        useSystemProviderStates({ hostId: "host-a", poll: false }),
+        useSystemProviderStates({ hostId: "host-b", poll: false }),
       ],
       { wrapper },
     );
 
     await waitFor(() => {
-      expect(result.current[0]?.data?.agents[0]?.providerId).toBe("codex");
-      expect(result.current[1]?.data?.agents[0]?.providerId).toBe(
+      expect(result.current[0]?.data?.providers[0]?.providerId).toBe("codex");
+      expect(result.current[1]?.data?.providers[0]?.providerId).toBe(
         "claude-code",
       );
     });
 
-    const hostAKey = onboardingAgentsQueryKey({
+    const hostAKey = systemProviderStatesQueryKey({
       environmentId: null,
       hostId: "host-a",
     });
-    const hostBKey = onboardingAgentsQueryKey({
+    const hostBKey = systemProviderStatesQueryKey({
       environmentId: null,
       hostId: "host-b",
     });
@@ -572,18 +576,19 @@ describe("useOnboardingAgents", () => {
   });
 
   it("routes reusable worktrees through their environment", async () => {
-    vi.mocked(sdk.system.onboardingAgents).mockResolvedValue(
-      onboardingOverview("claude-code"),
+    vi.mocked(sdk.system.providerStates).mockResolvedValue(
+      providerStates("claude-code"),
     );
     const { wrapper } = createQueryClientTestHarness();
 
     renderHook(
-      () => useOnboardingAgents({ environmentId: "env-remote", poll: false }),
+      () =>
+        useSystemProviderStates({ environmentId: "env-remote", poll: false }),
       { wrapper },
     );
 
     await waitFor(() => {
-      expect(sdk.system.onboardingAgents).toHaveBeenCalledWith({
+      expect(sdk.system.providerStates).toHaveBeenCalledWith({
         environmentId: "env-remote",
         hostId: undefined,
         signal: expect.any(AbortSignal),
