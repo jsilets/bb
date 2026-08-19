@@ -24,6 +24,7 @@ import {
 import {
   useHostProviderCliStatus,
   useSystemExecutionOptions,
+  useSystemProviders,
   useSystemProviderStates,
   useSystemUsageLimits,
 } from "./system-queries";
@@ -32,6 +33,7 @@ vi.mock("@/lib/sdk", () => ({
   BbHttpError: class BbHttpError extends Error {},
   sdk: {
     hosts: { providerCliStatus: vi.fn() },
+    providers: { list: vi.fn() },
     system: {
       executionOptions: vi.fn(),
       providerStates: vi.fn(),
@@ -49,6 +51,7 @@ const EXECUTION_OPTIONS_RESPONSE: SystemExecutionOptionsResponse = {
 };
 
 const PROVIDER_CLI_STATUS_RESPONSE = {} as ProviderCliStatusResponse;
+const PROVIDERS: ProviderInfo[] = [];
 
 function providerStates(providerId: string): SystemProviderStatesResponse {
   return {
@@ -80,6 +83,21 @@ afterEach(() => {
   cleanup();
   vi.clearAllMocks();
   window.localStorage.clear();
+});
+
+describe("useSystemProviders", () => {
+  it("routes provider metadata through the selected host", async () => {
+    vi.mocked(sdk.providers.list).mockResolvedValue(PROVIDERS);
+    const { wrapper } = createQueryClientTestHarness();
+
+    renderHook(() => useSystemProviders({ hostId: "host-a" }), { wrapper });
+
+    await waitFor(() => {
+      expect(sdk.providers.list).toHaveBeenCalledWith(
+        expect.objectContaining({ hostId: "host-a" }),
+      );
+    });
+  });
 });
 
 describe("useSystemExecutionOptions", () => {
